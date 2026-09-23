@@ -1,0 +1,615 @@
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+from decimal import Decimal
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+import yaml
+from dotenv import load_dotenv
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+
+from src.index.portfolio_feed import (
+    PortfolioFeedLoader,
+)
+from src.storage.database import (
+    Database,
+)
+
+
+load_dotenv(ROOT / ".env")
+
+
+LOCK_FILE = (
+    ROOT
+    / "data"
+    / "weekly_runner.lock"
+)
+
+
+def load_config() -> dict:
+    with (
+        ROOT / "config" / "runtime.yaml"
+    ).open(
+        "r",
+        encoding="utf-8",
+    ) as file:
+        return yaml.safe_load(file)
+
+
+def env_enabled(
+    name: str,
+) -> bool:
+
+    value = (
+        os.getenv(
+            name,
+            "false",
+        )
+        .strip()
+        .lower()
+    )
+
+    return value in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def acquire_lock() -> int:
+
+    LOCK_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    try:
+
+        fd = os.open(
+            LOCK_FILE,
+            (
+                os.O_CREAT
+                | os.O_EXCL
+                | os.O_WRONLY
+            ),
+        )
+
+    except FileExistsError:
+
+        raise RuntimeError(
+            "WEEKLY RUNNER BLOCKED: "
+            "another runner lock exists. "
+            f"Lock file: {LOCK_FILE}. "
+            "Do not delete it until confirming "
+            "that no ETF runner is active."
+        )
+
+    payload = (
+        f"pid={os.getpid()}\n"
+        f"created_at_utc="
+        f"{datetime.now(timezone.utc).isoformat()}\n"
+    )
+
+    os.write(
+        fd,
+        payload.encode("utf-8"),
+    )
+
+    return fd
+
+
+def release_lock(
+    fd: int,
+) -> None:
+
+    try:
+        os.close(fd)
+
+    finally:
+        try:
+            LOCK_FILE.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def main():
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--execute-if-ready",
+        action="store_true",
+        help=(
+            "Execute the full rebalance "
+            "only if every weekly safety "
+            "condition is satisfied."
+        ),
+    )
+
+    parser.add_argument(
+        "--preview-if-ready",
+        action="store_true",
+        help=(
+            "Run the full rebalance "
+            "executor in dry-run mode "
+            "when the portfolio is READY."
+        ),
+    )
+
+    args = parser.parse_args()
+
+    if (
+        args.execute_if_ready
+        and args.preview_if_ready
+    ):
+        raise RuntimeError(
+            "Choose either "
+            "--preview-if-ready or "
+            "--execute-if-ready, not both."
+        )
+
+    lock_fd = acquire_lock()
+    
+    try:
+
+        config = load_config()
+
+        database = Database(
+            str(
+                ROOT
+                / config["storage"][
+                    "database"
+                ]
+            )
+        )
+
+        # =============================================
+        # Load and validate portfolio feed.
+        # =============================================
+
+        feed = PortfolioFeedLoader(
+            ROOT
+            / config["index_feed"][
+                "portfolio_file"
+            ]
+        ).load()
+
+        cutoff = feed.cutoff_utc
+
+        max_age_hours = Decimal(
+            str(
+                config["index_feed"][
+                    "max_age_hours"
+                ]
+            )
+        )
+
+        cutoff_dt = (
+            datetime.fromisoformat(
+                cutoff
+            )
+        )
+
+        if cutoff_dt.tzinfo is None:
+
+            raise RuntimeError(
+                "Portfolio cutoff_utc has "
+                "no timezone information."
+            )
+
+        now_utc = datetime.now(
+            timezone.utc
+        )
+
+        age_hours = (
+            Decimal(
+                str(
+                    (
+                        now_utc
+                        - cutoff_dt
+                    ).total_seconds()
+                )
+            )
+            / Decimal("3600")
+        )
+
+        # =============================================
+        # Inspect persistent execution state.
+        # =============================================
+
+        with database.connection() as conn:
+
+            completed_run = (
+                conn.execute(
+                    """
+                    SELECT
+                        id,
+                        completed_at_utc
+                    FROM rebalance_runs
+                    WHERE cutoff_utc = ?
+                      AND status = 'COMPLETED'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (cutoff,),
+                ).fetchone()
+            )
+
+            unfinished_same_cutoff = (
+                conn.execute(
+                    """
+                    SELECT
+                        id,
+                        status,
+                        started_at_utc,
+                        completed_at_utc
+                    FROM rebalance_runs
+                    WHERE cutoff_utc = ?
+                      AND status <> 'COMPLETED'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (cutoff,),
+                ).fetchone()
+            )
+
+            recoverable_orders = (
+                conn.execute(
+                    """
+                    SELECT
+                        o.client_order_id,
+                        l.local_status,
+                        o.exchange_status
+                    FROM orders o
+                    JOIN order_lifecycle l
+                      ON l.order_id = o.id
+                    WHERE l.local_status
+                          <> 'ACCOUNTED'
+                    ORDER BY o.id
+                    """
+                ).fetchall()
+            )
+
+        automation_enabled = (
+            env_enabled(
+                "ETF_WEEKLY_AUTOMATION_ENABLED"
+            )
+        )
+
+        trading_enabled = (
+            env_enabled(
+                "BINANCE_TRADING_ENABLED"
+            )
+        )
+
+        print("=" * 82)
+        print(
+            "ETF WEEKLY RUNNER"
+        )
+        print("=" * 82)
+
+        print()
+
+        print(
+            f"Cutoff             : "
+            f"{cutoff}"
+        )
+
+        print(
+            f"Feed age           : "
+            f"{age_hours:.2f} hours"
+        )
+
+        print(
+            f"Maximum feed age   : "
+            f"{max_age_hours} hours"
+        )
+
+        print(
+            f"Index level        : "
+            f"{feed.index_level}"
+        )
+
+        print(
+            f"Automation enabled : "
+            f"{automation_enabled}"
+        )
+
+        print(
+            f"Trading enabled    : "
+            f"{trading_enabled}"
+        )
+
+        print()
+
+        # =============================================
+        # State 1:
+        # Successfully handled already.
+        # This is NORMAL, not an error.
+        # =============================================
+
+        if completed_run is not None:
+
+            print(
+                "Decision           : "
+                "NO_ACTION_ALREADY_COMPLETED"
+            )
+
+            print(
+                f"Completed run      : "
+                f"{completed_run['id']}"
+            )
+
+            print(
+                f"Completed at       : "
+                f"{completed_run['completed_at_utc']}"
+            )
+
+            print()
+
+            print(
+                "The current portfolio has "
+                "already been processed."
+            )
+
+            return
+
+        # =============================================
+        # State 2:
+        # Any unresolved ETF order blocks automation.
+        # =============================================
+
+        if recoverable_orders:
+
+            print(
+                "Decision           : "
+                "BLOCKED_RECOVERY_REQUIRED"
+            )
+
+            print()
+
+            print(
+                "Recoverable orders:"
+            )
+
+            for row in recoverable_orders:
+
+                print(
+                    f"  "
+                    f"{row['client_order_id']} "
+                    f"local="
+                    f"{row['local_status']} "
+                    f"exchange="
+                    f"{row['exchange_status']}"
+                )
+
+            raise RuntimeError(
+                "Automatic rebalance blocked "
+                "until unresolved ETF orders "
+                "are reconciled."
+            )
+
+        # =============================================
+        # State 3:
+        # A previous non-completed run for the same
+        # cutoff requires human review.
+        # =============================================
+
+        if (
+            unfinished_same_cutoff
+            is not None
+        ):
+
+            print(
+                "Decision           : "
+                "BLOCKED_EXISTING_RUN"
+            )
+
+            print(
+                f"Existing run       : "
+                f"{unfinished_same_cutoff['id']}"
+            )
+
+            print(
+                f"Existing status    : "
+                f"{unfinished_same_cutoff['status']}"
+            )
+
+            raise RuntimeError(
+                "A previous non-completed "
+                "rebalance exists for this "
+                "portfolio cutoff."
+            )
+
+        # =============================================
+        # State 4:
+        # Old portfolio -> wait for new feed.
+        # Not an execution error.
+        # =============================================
+
+        if age_hours > max_age_hours:
+
+            print(
+                "Decision           : "
+                "NO_ACTION_STALE_FEED"
+            )
+
+            print()
+
+            print(
+                "Waiting for a new "
+                "portfolio feed."
+            )
+
+            return
+
+        # =============================================
+        # State 5:
+        # New + fresh + clean state.
+        # =============================================
+
+        print(
+            "Decision           : READY"
+        )
+
+        print()
+
+        print(
+            "New portfolio cutoff detected "
+            "and all runner safety checks "
+            "passed."
+        )
+
+        # =============================================
+        # Safe orchestration test:
+        # invoke the real executor WITHOUT its
+        # execution flag.
+        # =============================================
+
+        if args.preview_if_ready:
+
+            print()
+            print(
+                "Launching rebalance executor "
+                "in DRY-RUN mode..."
+            )
+
+            command = [
+                sys.executable,
+                str(
+                    ROOT
+                    / "scripts"
+                    / "execute_full_rebalance.py"
+                ),
+            ]
+
+            result = subprocess.run(
+                command,
+                cwd=str(ROOT),
+                check=False,
+            )
+
+            print()
+            print(
+                f"Dry-run exit code  : "
+                f"{result.returncode}"
+            )
+
+            if result.returncode != 0:
+                raise RuntimeError(
+                    "Rebalance dry-run returned "
+                    "a non-zero exit code."
+                )
+
+            print()
+            print(
+                "WEEKLY PREVIEW: COMPLETE"
+            )
+
+            print(
+                "No Binance order was sent."
+            )
+
+            return
+        
+        # =============================================
+        # Observation-only invocation.
+        # =============================================
+
+        if not args.execute_if_ready:
+
+            print()
+
+            print(
+                "Execution not requested."
+            )
+
+            print(
+                "No Binance order was sent."
+            )
+
+            return
+
+        # =============================================
+        # Automated execution requires THREE things:
+        #
+        # 1 runner CLI flag
+        # 2 automation env switch
+        # 3 trading env switch
+        # =============================================
+
+        if not automation_enabled:
+
+            raise RuntimeError(
+                "AUTOMATION BLOCKED: "
+                "ETF_WEEKLY_AUTOMATION_ENABLED="
+                "false"
+            )
+
+        if not trading_enabled:
+
+            raise RuntimeError(
+                "AUTOMATION BLOCKED: "
+                "BINANCE_TRADING_ENABLED=false"
+            )
+
+        print()
+        print(
+            "Launching protected full "
+            "rebalance executor..."
+        )
+
+        command = [
+            sys.executable,
+            str(
+                ROOT
+                / "scripts"
+                / "execute_full_rebalance.py"
+            ),
+            "--execute-full-rebalance",
+        ]
+
+        result = subprocess.run(
+            command,
+            cwd=str(ROOT),
+            check=False,
+        )
+
+        print()
+
+        print(
+            f"Executor exit code : "
+            f"{result.returncode}"
+        )
+
+        if result.returncode != 0:
+
+            raise RuntimeError(
+                "Full rebalance executor "
+                "returned a non-zero exit code."
+            )
+
+        print()
+
+        print(
+            "WEEKLY RUNNER: COMPLETE"
+        )
+
+    finally:
+
+        release_lock(
+            lock_fd
+        )
+
+
+if __name__ == "__main__":
+    main()

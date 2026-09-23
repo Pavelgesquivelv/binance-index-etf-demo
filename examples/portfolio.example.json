@@ -1,0 +1,117 @@
+{
+  "status": "research_provisional",
+  "cutoff_local": "2026-08-31T07:00:00-06:00",
+  "cutoff_utc": "2026-08-31T13:00:00+00:00",
+  "ranking_date": "2026-08-30",
+  "selection_method": "Manually reviewed CMC universe and selection",
+  "provisional_exclusions": [
+    "HYPE",
+    "XMR",
+    "LEO",
+    "CC"
+  ],
+  "base_level": "100",
+  "initial_value_usdt": "100",
+  "value_before_usdt": "56.41415870095715283990218688711655495640",
+  "value_after_usdt": "56.41415870095715283990218688711655495640",
+  "index_level": "56.4141587009571528399021868871165549564",
+  "cash_usdt": "0E-38",
+  "fees_included": false,
+  "price_reference": "Binance Spot 1-minute candle open",
+  "assumptions": [
+    "Provisional exclusions accepted for this cutoff: HYPE, XMR, LEO, CC. Unresolved API queries and missing archives do not conclusively establish historical absence.",
+    "Previous UTC day's CMC ranking approximates the cutoff.",
+    "Manual eligibility review; historical category timing unverified.",
+    "Fractional theoretical quantities; no fees or slippage."
+  ],
+  "sources": {
+    "runs/historical/portfolio_2026-07-31.json": "2889c03a2af4fef95b5592e12450e5a3ac2474c5eca9f5cdc1452c3e2c14a9e9",
+    "runs/historical/2026-08/20260921T235837482461Z/daily_index.csv": "b66bda3612e30864aa749b8716f4ce628740911a5640c0eac60bd351deea99ee",
+    "runs/historical/2026-08-30/cmc.json": "dbb0c3e88743d55171f2434bfe9981efd2a65862348f6fda11968ba3f467ae31",
+    "runs/historical/binance/20260922T000118501005Z/archive_checks_20260922T000151480480Z.json": "5d4c026adee60cbefc538582c4d50da8a4c9189930bde5a9fd81862ca4d79ea2",
+    "runs/historical/binance/20260922T000118501005Z/summary.csv": "affec1bd2d3ec818eb1781e62249fae9f75e47967fdff1df0bd7f1570156ead7",
+    "runs/historical/binance/20260922T000118501005Z/metadata.json": "2290ba3961ac06840b07fd4c30b2e4ab631d9318fc9959e7587fc634bf808aa2",
+    "runs/historical/archives/ADAUSDT-1m-2026-08.zip": "03e8cf5a9874442e2fd9981cc60588c0beed6ed8b47ff657c3ec6c397d8bb93b",
+    "runs/historical/archives/BNBUSDT-1m-2026-08.zip": "12eba4bd8dbbf61a04dd10f536f74521f4cb3590bcc5a40a46b98effdc31e9c1",
+    "runs/historical/archives/BTCUSDT-1m-2026-08.zip": "acab442e02745177063031d402929703ae983715010064b40cf811c4beb843d4",
+    "runs/historical/archives/ETHUSDT-1m-2026-08.zip": "f2f2fe8da85467fb8ec8185e07f16f3af9f4ebcb266633ba494e76ac73c40c0c",
+    "runs/historical/archives/LINKUSDT-1m-2026-08.zip": "c7a1e12faf1c61e3846432d3570fa2eb57c8ce8b711209444e854245cf43e85a",
+    "runs/historical/archives/SOLUSDT-1m-2026-08.zip": "138412edb2c86df6109e0800b7b7399c6f7d2b4483d0e35ddf5921e70c0d08b6",
+    "runs/historical/archives/TRXUSDT-1m-2026-08.zip": "7a186e62232d56d93c516f3b09fb8b4c2570249ca2b795dc04ed2996a8254024",
+    "runs/historical/archives/XLMUSDT-1m-2026-08.zip": "3a97c210b14aa9a9ff58dc2774f3ded00e4a85e642c7f23ffc9f825f2995cd77",
+    "runs/historical/archives/XRPUSDT-1m-2026-08.zip": "c2d64e7fccc79a915659e4453b6423f49d9fbec2cf3ce8b4fcb33852c2c1f5cf",
+    "runs/historical/archives/ZECUSDT-1m-2026-08.zip": "c65916c27ab1dbcc35ba6cf2cb4655d4cfb33b1426801e1dc136afc3837f304d"
+  },
+  "positions": [
+    {
+      "asset": "BTC",
+      "pair": "BTCUSDT",
+      "quantity": "0.00007239043903400618095108223092287034964071",
+      "rebalance_price_usdt": "77930.40000000",
+      "target_weight_pct": 10
+    },
+    {
+      "asset": "ETH",
+      "pair": "ETHUSDT",
+      "quantity": "0.002301162884744637182186868996639536413959",
+      "rebalance_price_usdt": "2451.55000000",
+      "target_weight_pct": 10
+    },
+    {
+      "asset": "BNB",
+      "pair": "BNBUSDT",
+      "quantity": "0.008219923751796877918127695485584729197651",
+      "rebalance_price_usdt": "686.31000000",
+      "target_weight_pct": 10
+    },
+    {
+      "asset": "XRP",
+      "pair": "XRPUSDT",
+      "quantity": "4.141400580014473119945836652996370206754",
+      "rebalance_price_usdt": "1.36220000",
+      "target_weight_pct": 10
+    },
+    {
+      "asset": "SOL",
+      "pair": "SOLUSDT",
+      "quantity": "0.05489360581975007574185286259328262621037",
+      "rebalance_price_usdt": "102.77000000",
+      "target_weight_pct": 10
+    },
+    {
+      "asset": "TRX",
+      "pair": "TRXUSDT",
+      "quantity": "16.86017893035180897785480779650823519319",
+      "rebalance_price_usdt": "0.33460000",
+      "target_weight_pct": 10
+    },
+    {
+      "asset": "ZEC",
+      "pair": "ZECUSDT",
+      "quantity": "0.006862952847405402956156517181921941941874",
+      "rebalance_price_usdt": "822.01000000",
+      "target_weight_pct": 10
+    },
+    {
+      "asset": "LINK",
+      "pair": "LINKUSDT",
+      "quantity": "0.5002142108614750207474923469331136279163",
+      "rebalance_price_usdt": "11.27800000",
+      "target_weight_pct": 10
+    },
+    {
+      "asset": "ADA",
+      "pair": "ADAUSDT",
+      "quantity": "28.91550932904005783695652838909100715346",
+      "rebalance_price_usdt": "0.19510000",
+      "target_weight_pct": 10
+    },
+    {
+      "asset": "XLM",
+      "pair": "XLMUSDT",
+      "quantity": "32.18149383967892346828419103657533083651",
+      "rebalance_price_usdt": "0.17530000",
+      "target_weight_pct": 10
+    }
+  ]
+}

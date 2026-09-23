@@ -1,0 +1,20 @@
+fund:
+  name: Crypto Index ETF Demo
+  base_currency: USDC
+  initial_capital: '5000'
+  shares_outstanding: '50'
+  order_prefix: IDXETF_
+index_feed:
+  portfolio_file: data/portfolio_seed.json
+  max_age_hours: 192
+storage:
+  database: data/index_etf.db
+environment:
+  exchange: BINANCE
+  mode: DEMO
+execution:
+  single_order_test_asset: BNB
+  single_order_test_usdc: '25'
+  full_rebalance:
+    max_orders: 20
+    fee_buffer_multiplier: '2'
