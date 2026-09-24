@@ -44,6 +44,10 @@ from src.storage.database import (
     Database,
 )
 
+from src.contributions.interlocks import (
+    get_blocking_contributions,
+)
+
 from src.execution.benchmark_repository import (
     ExecutionBenchmarkRepository,
 )
@@ -324,6 +328,47 @@ def main():
         raise RuntimeError(
             "Resolve previous ETF orders "
             "before a new rebalance."
+        )
+
+    # =====================================================
+    # Contribution / rebalance mutual exclusion.
+    #
+    # Once external capital has been accepted into the
+    # ETF, its BUY-only investment must finish before
+    # a new index rebalance may start.
+    # =====================================================
+
+    with database.connection() as conn:
+
+        blocking_contributions = (
+            get_blocking_contributions(
+                conn
+            )
+        )
+
+    if blocking_contributions:
+
+        print(
+            "EXECUTION BLOCKED: "
+            "contribution investment "
+            "is incomplete."
+        )
+
+        for row in blocking_contributions:
+
+            print(
+                f"  period="
+                f"{row['period_id']} "
+                f"status="
+                f"{row['status']} "
+                f"amount="
+                f"{row['accepted_amount']}"
+            )
+
+        raise RuntimeError(
+            "Complete or recover the "
+            "contribution investment before "
+            "starting a new index rebalance."
         )
 
     # =====================================================

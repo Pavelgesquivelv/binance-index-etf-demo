@@ -20,3 +20,22 @@ execution:
     fee_buffer_multiplier: '2'
 account_isolation:
   shared_bnb_fee_reserve: '0.02000000'
+cash_contributions:
+  enabled: true
+  currency: USDC
+  amount: '200'
+  schedule:
+    frequency: weekly
+    weekday: MONDAY
+    time_local: 09:00
+    timezone: America/Mexico_City
+    start_date_local: '2026-09-28'
+    catch_up_policy: no_backfill
+  investment:
+    mode: target_weight_of_contribution
+    allow_sells: false
+    trigger_rebalance: false
+    residual_cash_policy: carry_forward
+  execution:
+    max_orders: 20
+    fee_buffer_multiplier: '2'

@@ -108,9 +108,44 @@ class Database:
                     ON rebalance_runs(cutoff_utc)
                     WHERE status = 'COMPLETED';
 
+                CREATE TABLE IF NOT EXISTS cash_contributions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                    period_id TEXT NOT NULL UNIQUE,
+
+                    scheduled_at_utc TEXT NOT NULL,
+                    currency TEXT NOT NULL,
+
+                    expected_amount TEXT NOT NULL,
+                    detected_amount TEXT,
+                    accepted_amount TEXT,
+
+                    feed_cutoff_utc TEXT NOT NULL,
+
+                    nav_before_usdc TEXT,
+                    nav_per_share_before_usdc TEXT,
+
+                    shares_before TEXT,
+                    shares_issued TEXT,
+                    shares_after TEXT,
+
+                    status TEXT NOT NULL,
+
+                    created_at_utc TEXT NOT NULL,
+                    updated_at_utc TEXT NOT NULL,
+
+                    accepted_at_utc TEXT,
+                    completed_at_utc TEXT,
+
+                    notes TEXT
+                );
+
                 CREATE TABLE IF NOT EXISTS orders (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    rebalance_run_id INTEGER NOT NULL,
+
+                    rebalance_run_id INTEGER,
+                    contribution_id INTEGER,
+
                     created_at_utc TEXT NOT NULL,
                     client_order_id TEXT NOT NULL UNIQUE,
 
@@ -132,7 +167,23 @@ class Database:
 
                     FOREIGN KEY (
                         rebalance_run_id
-                    ) REFERENCES rebalance_runs(id)
+                    ) REFERENCES rebalance_runs(id),
+
+                    FOREIGN KEY (
+                        contribution_id
+                    ) REFERENCES cash_contributions(id),
+
+                    CHECK (
+                        (
+                            rebalance_run_id IS NOT NULL
+                            AND contribution_id IS NULL
+                        )
+                        OR
+                        (
+                            rebalance_run_id IS NULL
+                            AND contribution_id IS NOT NULL
+                        )
+                    )
                 );
 
                 CREATE TABLE IF NOT EXISTS fills (

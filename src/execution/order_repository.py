@@ -19,16 +19,37 @@ class OrderRepository:
         self,
         conn: sqlite3.Connection,
         *,
-        rebalance_run_id: int,
         client_order_id: str,
         symbol: str,
         asset: str,
         side: str,
         requested_quantity: Decimal | None,
         requested_quote_quantity: Decimal | None,
+        rebalance_run_id: int | None = None,
+        contribution_id: int | None = None,
     ) -> int:
 
         side = side.upper()
+
+        has_rebalance_owner = (
+            rebalance_run_id
+            is not None
+        )
+
+        has_contribution_owner = (
+            contribution_id
+            is not None
+        )
+
+        if (
+            has_rebalance_owner
+            == has_contribution_owner
+        ):
+            raise ValueError(
+                "Order must belong to exactly "
+                "one owner: rebalance_run_id "
+                "or contribution_id."
+            )
 
         if side not in {"BUY", "SELL"}:
             raise ValueError(
@@ -46,6 +67,7 @@ class OrderRepository:
             """
             INSERT INTO orders (
                 rebalance_run_id,
+                contribution_id,
                 created_at_utc,
                 client_order_id,
                 symbol,
@@ -60,10 +82,15 @@ class OrderRepository:
                 cumulative_quote_quantity,
                 response_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?
+            )
             """,
             (
                 rebalance_run_id,
+                contribution_id,
                 self._utc_now(),
                 client_order_id,
                 symbol,
@@ -237,6 +264,8 @@ class OrderRepository:
             """
             SELECT
                 o.id,
+                o.rebalance_run_id,
+                o.contribution_id,
                 o.client_order_id,
                 o.symbol,
                 o.asset,
@@ -261,3 +290,30 @@ class OrderRepository:
             dict(row)
             for row in rows
         ]
+
+
+    def get_by_client_order_id(
+        self,
+        conn: sqlite3.Connection,
+        client_order_id: str,
+    ) -> dict | None:
+
+        row = conn.execute(
+            """
+            SELECT
+                o.*,
+                l.local_status,
+                l.updated_at_utc,
+                l.last_error
+            FROM orders o
+            JOIN order_lifecycle l
+              ON l.order_id = o.id
+            WHERE o.client_order_id = ?
+            """,
+            (client_order_id,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return dict(row)

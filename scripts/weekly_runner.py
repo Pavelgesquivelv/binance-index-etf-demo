@@ -32,6 +32,10 @@ from src.storage.database import (
     Database,
 )
 
+from src.contributions.interlocks import (
+    get_blocking_contributions,
+)
+
 
 load_dotenv(ROOT / ".env")
 
@@ -288,6 +292,12 @@ def main():
                 ).fetchall()
             )
 
+            blocking_contributions = (
+                get_blocking_contributions(
+                    conn
+                )
+            )
+
         automation_enabled = (
             env_enabled(
                 "ETF_WEEKLY_AUTOMATION_ENABLED"
@@ -374,6 +384,46 @@ def main():
 
         # =============================================
         # State 2:
+        # A contribution that has already been
+        # accepted must finish investing before
+        # a NEW index rebalance can begin.
+        # =============================================
+
+        if blocking_contributions:
+
+            print(
+                "Decision           : "
+                "BLOCKED_CONTRIBUTION_IN_PROGRESS"
+            )
+
+            print()
+            print(
+                "Blocking contributions:"
+            )
+
+            for row in blocking_contributions:
+
+                print(
+                    f"  period="
+                    f"{row['period_id']} "
+                    f"status="
+                    f"{row['status']} "
+                    f"amount="
+                    f"{row['accepted_amount']}"
+                )
+
+            print()
+
+            print(
+                "Complete or recover the "
+                "contribution investment before "
+                "processing a new index portfolio."
+            )
+
+            return
+
+        # =============================================
+        # State 3:
         # Any unresolved ETF order blocks automation.
         # =============================================
 
