@@ -18,3 +18,5 @@ execution:
   full_rebalance:
     max_orders: 20
     fee_buffer_multiplier: '2'
+account_isolation:
+  shared_bnb_fee_reserve: '0.02000000'

@@ -11,8 +11,16 @@ ZERO = Decimal("0")
 class PhysicalBackingLine:
     asset: str
     ledger_quantity: Decimal
+    required_reserve: Decimal
     exchange_free: Decimal
     surplus: Decimal
+
+    @property
+    def required_total(self) -> Decimal:
+        return (
+            self.ledger_quantity
+            + self.required_reserve
+        )
 
     @property
     def is_backed(self) -> bool:
@@ -62,6 +70,10 @@ def check_physical_backing(
     positions: dict[str, Decimal],
     account: dict,
     base_currency: str,
+    minimum_reserves: dict[
+        str,
+        Decimal,
+    ] | None = None,
 ) -> PhysicalBackingResult:
 
     base_currency = (
@@ -73,6 +85,13 @@ def check_physical_backing(
             account
         )
     )
+
+    minimum_reserves = {
+        asset.upper(): Decimal(value)
+        for asset, value in (
+            minimum_reserves or {}
+        ).items()
+    }
 
     required = {
         base_currency: cash,
@@ -99,13 +118,35 @@ def check_physical_backing(
             + quantity
         )
 
+    all_assets = (
+        set(required)
+        | set(minimum_reserves)
+    )
+
     lines = []
 
-    for asset in sorted(required):
+    for asset in sorted(all_assets):
 
         ledger_quantity = (
-            required[asset]
+            required.get(
+                asset,
+                ZERO,
+            )
         )
+
+        required_reserve = (
+            minimum_reserves.get(
+                asset,
+                ZERO,
+            )
+        )
+
+        if required_reserve < ZERO:
+            raise RuntimeError(
+                f"Negative minimum reserve "
+                f"detected for {asset}: "
+                f"{required_reserve}"
+            )
 
         free_quantity = (
             exchange_free.get(
@@ -114,18 +155,26 @@ def check_physical_backing(
             )
         )
 
+        required_total = (
+            ledger_quantity
+            + required_reserve
+        )
+
         lines.append(
             PhysicalBackingLine(
                 asset=asset,
                 ledger_quantity=(
                     ledger_quantity
                 ),
+                required_reserve=(
+                    required_reserve
+                ),
                 exchange_free=(
                     free_quantity
                 ),
                 surplus=(
                     free_quantity
-                    - ledger_quantity
+                    - required_total
                 ),
             )
         )

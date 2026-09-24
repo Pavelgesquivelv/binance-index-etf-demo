@@ -49,6 +49,16 @@ def main():
         ].upper()
     )
 
+    shared_bnb_reserve = Decimal(
+        config.get(
+            "account_isolation",
+            {},
+        ).get(
+            "shared_bnb_fee_reserve",
+            "0",
+        )
+    )
+
     database = Database(
         str(
             ROOT
@@ -84,24 +94,29 @@ def main():
         positions=positions,
         account=account,
         base_currency=base_currency,
+        minimum_reserves={
+            "BNB": shared_bnb_reserve,
+        },
     )
 
-    print("=" * 92)
+    print("=" * 125)
     print(
         "ETF PHYSICAL BACKING CHECK"
     )
-    print("=" * 92)
+    print("=" * 125)
 
     print()
 
     print(
         f"{'ASSET':8}"
-        f"{'ETF LEDGER':>24}"
-        f"{'BINANCE FREE':>24}"
-        f"{'SURPLUS / DEFICIT':>24}"
+        f"{'ETF LEDGER':>22}"
+        f"{'FEE RESERVE':>22}"
+        f"{'REQUIRED':>22}"
+        f"{'BINANCE FREE':>22}"
+        f"{'HEADROOM':>22}"
     )
 
-    print("-" * 92)
+    print("-" * 125)
 
     for line in result.lines:
 
@@ -113,13 +128,22 @@ def main():
 
         print(
             f"{line.asset:8}"
-            f"{str(line.ledger_quantity):>24}"
-            f"{str(line.exchange_free):>24}"
-            f"{str(line.surplus):>24} "
+            f"{str(line.ledger_quantity):>22}"
+            f"{str(line.required_reserve):>22}"
+            f"{str(line.required_total):>22}"
+            f"{str(line.exchange_free):>22}"
+            f"{str(line.surplus):>22} "
             f"{status}"
         )
 
-    print("-" * 92)
+    print("-" * 125)
+
+    print()
+
+    print(
+        "Shared BNB fee reserve : "
+        f"{shared_bnb_reserve} BNB"
+    )
 
     print()
 
@@ -130,9 +154,9 @@ def main():
         )
 
         print(
-            "Every ETF ledger asset is "
-            "fully covered by Binance "
-            "free balance."
+            "ETF inventory is fully backed "
+            "and the configured shared fee "
+            "reserve is intact."
         )
 
     else:
@@ -151,7 +175,12 @@ def main():
 
             print(
                 f"  {line.asset}: "
-                f"ETF={line.ledger_quantity}, "
+                f"ledger="
+                f"{line.ledger_quantity}, "
+                f"reserve="
+                f"{line.required_reserve}, "
+                f"required="
+                f"{line.required_total}, "
                 f"Binance free="
                 f"{line.exchange_free}, "
                 f"deficit="
