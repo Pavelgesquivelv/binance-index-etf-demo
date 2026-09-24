@@ -34,6 +34,9 @@ from src.index.portfolio_feed import (
 from src.portfolio.ledger import (
     PortfolioLedger,
 )
+from src.portfolio.physical_backing import (
+    check_physical_backing,
+)
 from src.rebalance.planner import (
     RebalancePlanner,
 )
@@ -89,6 +92,56 @@ def get_positions(
         for row in ledger.get_positions()
         if Decimal(row["quantity"]) != 0
     }
+
+
+def require_physical_backing(
+    *,
+    ledger: PortfolioLedger,
+    account: dict,
+    base_currency: str,
+    shared_bnb_fee_reserve: Decimal,
+    context: str,
+) -> None:
+
+    cash = ledger.get_cash_balance(
+        base_currency
+    )
+
+    positions = get_positions(
+        ledger
+    )
+
+    result = check_physical_backing(
+        cash=cash,
+        positions=positions,
+        account=account,
+        base_currency=base_currency,
+        minimum_reserves={
+            "BNB":
+                shared_bnb_fee_reserve,
+        },
+    )
+
+    if result.ok:
+        return
+
+    details = "; ".join(
+        (
+            f"{line.asset}: "
+            f"ledger={line.ledger_quantity}, "
+            f"reserve={line.required_reserve}, "
+            f"required={line.required_total}, "
+            f"free={line.exchange_free}, "
+            f"deficit={-line.surplus}"
+        )
+        for line in result.deficits
+    )
+
+    raise RuntimeError(
+        "EXECUTION BLOCKED: physical "
+        "backing check failed "
+        f"({context}). {details}"
+    )
 
 
 def get_recoverable_orders(
@@ -203,6 +256,18 @@ def main():
             config["execution"][
                 "full_rebalance"
             ]["fee_buffer_multiplier"]
+        )
+    )
+
+    shared_bnb_fee_reserve = Decimal(
+        str(
+            config.get(
+                "account_isolation",
+                {},
+            ).get(
+                "shared_bnb_fee_reserve",
+                "0",
+            )
         )
     )
 
@@ -391,6 +456,25 @@ def main():
     client = BinanceDemoClient()
 
     account = client.get_account()
+
+    require_physical_backing(
+        ledger=ledger,
+        account=account,
+        base_currency=base_currency,
+        shared_bnb_fee_reserve=(
+            shared_bnb_fee_reserve
+        ),
+        context="initial preflight",
+    )
+
+    print(
+        "Physical backing  : OK"
+    )
+
+    print(
+        "Shared BNB reserve: "
+        f"{shared_bnb_fee_reserve} BNB"
+    )
 
     exchange_info = (
         client.get_exchange_info()
@@ -620,7 +704,7 @@ def main():
     planned_buys = sum(
         (
             line.estimated_notional
-            for line in plan.buys
+            for line in funding.buys
         ),
         ZERO,
     )
@@ -628,7 +712,7 @@ def main():
     planned_sells = sum(
         (
             line.estimated_notional
-            for line in plan.sells
+            for line in funding.sells
         ),
         ZERO,
     )
@@ -658,11 +742,6 @@ def main():
 
     if bnb_discount_detected:
 
-        bnb_quantity = positions.get(
-            "BNB",
-            ZERO,
-        )
-
         bnb_book = books[
             f"BNB{base_currency}"
         ]
@@ -672,19 +751,23 @@ def main():
             + bnb_book["ask"]
         ) / Decimal("2")
 
-        bnb_value = (
-            bnb_quantity
+        shared_bnb_fee_reserve_value = (
+            shared_bnb_fee_reserve
             * bnb_mid
         )
 
         if (
-            bnb_value
+            shared_bnb_fee_reserve_value
             < required_fee_buffer
         ):
             raise RuntimeError(
-                "ETF-owned BNB fee reserve "
-                "is insufficient. "
-                f"BNB value={bnb_value}, "
+                "Shared BNB fee reserve "
+                "is insufficient for the "
+                "planned executable turnover. "
+                f"reserve_bnb="
+                f"{shared_bnb_fee_reserve}, "
+                f"reserve_value="
+                f"{shared_bnb_fee_reserve_value}, "
                 f"required="
                 f"{required_fee_buffer}"
             )
@@ -847,7 +930,13 @@ def main():
 
     if bnb_discount_detected:
         print(
-            "ETF BNB fee reserve       : OK"
+            "Shared BNB fee reserve    : OK"
+        )
+
+        print(
+            "Shared reserve value      : "
+            f"{shared_bnb_fee_reserve_value:.8f} "
+            f"{base_currency}"
         )
 
     # =====================================================
@@ -948,6 +1037,22 @@ def main():
 
         live_account = (
             client.get_account()
+        )
+
+        require_physical_backing(
+            ledger=ledger,
+            account=live_account,
+            base_currency=base_currency,
+            shared_bnb_fee_reserve=(
+                shared_bnb_fee_reserve
+            ),
+            context=(
+                f"before {client_order_id}"
+            ),
+        )
+
+        print(
+            "Physical backing: OK"
         )
 
         if line.action == "BUY":

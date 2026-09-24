@@ -16,8 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
+from src.exchange.binance_demo_client import (
+    BinanceDemoClient,
+)
 from src.index.portfolio_feed import (
     PortfolioFeedLoader,
+)
+from src.portfolio.ledger import (
+    PortfolioLedger,
+)
+from src.portfolio.physical_backing import (
+    check_physical_backing,
 )
 from src.storage.database import (
     Database,
@@ -454,7 +463,112 @@ def main():
 
         # =============================================
         # State 5:
-        # New + fresh + clean state.
+        # Physical backing + shared BNB fee reserve.
+        #
+        # Only required when a new, fresh portfolio
+        # could actually become executable.
+        # =============================================
+
+        base_currency = (
+            config["fund"][
+                "base_currency"
+            ].upper()
+        )
+
+        shared_bnb_fee_reserve = Decimal(
+            str(
+                config.get(
+                    "account_isolation",
+                    {},
+                ).get(
+                    "shared_bnb_fee_reserve",
+                    "0",
+                )
+            )
+        )
+
+        ledger = PortfolioLedger(
+            database
+        )
+
+        cash = ledger.get_cash_balance(
+            base_currency
+        )
+
+        positions = {
+            row["asset"]:
+                Decimal(row["quantity"])
+            for row in ledger.get_positions()
+            if Decimal(
+                row["quantity"]
+            ) != 0
+        }
+
+        client = BinanceDemoClient()
+        account = client.get_account()
+
+        backing = check_physical_backing(
+            cash=cash,
+            positions=positions,
+            account=account,
+            base_currency=base_currency,
+            minimum_reserves={
+                "BNB":
+                    shared_bnb_fee_reserve,
+            },
+        )
+
+        if not backing.ok:
+
+            print(
+                "Decision           : "
+                "BLOCKED_PHYSICAL_BACKING"
+            )
+
+            print()
+
+            print(
+                "Physical backing deficits:"
+            )
+
+            for line in backing.deficits:
+
+                print(
+                    f"  {line.asset}: "
+                    f"ledger="
+                    f"{line.ledger_quantity}, "
+                    f"reserve="
+                    f"{line.required_reserve}, "
+                    f"required="
+                    f"{line.required_total}, "
+                    f"free="
+                    f"{line.exchange_free}, "
+                    f"deficit="
+                    f"{-line.surplus}"
+                )
+
+            print()
+
+            print(
+                "No Binance order was sent."
+            )
+
+            raise SystemExit(2)
+
+        print(
+            "Physical backing   : OK"
+        )
+
+        print(
+            "Shared BNB reserve : "
+            f"{shared_bnb_fee_reserve} BNB"
+        )
+
+        print()
+
+        # =============================================
+        # State 6:
+        # New + fresh + clean + physically backed.
         # =============================================
 
         print(

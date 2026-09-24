@@ -94,3 +94,5 @@ dist/
 .DS_Store
 Thumbs.db
 desktop.ini
+# VS Code workspace files
+*.code-workspace
