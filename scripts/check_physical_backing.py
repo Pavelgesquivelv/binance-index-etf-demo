@@ -49,12 +49,12 @@ def main():
         ].upper()
     )
 
-    shared_bnb_reserve = Decimal(
+    dedicated_bnb_reserve = Decimal(
         config.get(
             "account_isolation",
             {},
         ).get(
-            "shared_bnb_fee_reserve",
+            "dedicated_bnb_fee_reserve",
             "0",
         )
     )
@@ -95,7 +95,7 @@ def main():
         account=account,
         base_currency=base_currency,
         minimum_reserves={
-            "BNB": shared_bnb_reserve,
+            "BNB": dedicated_bnb_reserve,
         },
     )
 
@@ -141,8 +141,8 @@ def main():
     print()
 
     print(
-        "Shared BNB fee reserve : "
-        f"{shared_bnb_reserve} BNB"
+        "Dedicated BNB fee reserve : "
+        f"{dedicated_bnb_reserve} BNB"
     )
 
     print()

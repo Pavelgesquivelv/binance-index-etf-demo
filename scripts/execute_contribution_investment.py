@@ -168,7 +168,7 @@ def require_backing(
     client: BinanceDemoClient,
     account: dict,
     base_currency: str,
-    shared_bnb_reserve: Decimal,
+    dedicated_bnb_reserve: Decimal,
 ) -> None:
 
     cash = ledger.get_cash_balance(
@@ -186,7 +186,7 @@ def require_backing(
         base_currency=base_currency,
         minimum_reserves={
             "BNB":
-                shared_bnb_reserve,
+                dedicated_bnb_reserve,
         },
     )
 
@@ -434,13 +434,13 @@ def main():
 
     account = client.get_account()
 
-    shared_bnb_reserve = Decimal(
+    dedicated_bnb_reserve = Decimal(
         str(
             config.get(
                 "account_isolation",
                 {},
             ).get(
-                "shared_bnb_fee_reserve",
+                "dedicated_bnb_fee_reserve",
                 "0",
             )
         )
@@ -451,8 +451,8 @@ def main():
         client=client,
         account=account,
         base_currency=base_currency,
-        shared_bnb_reserve=(
-            shared_bnb_reserve
+        dedicated_bnb_reserve=(
+            dedicated_bnb_reserve
         ),
     )
 
@@ -560,7 +560,7 @@ def main():
         ) / Decimal("2")
 
         shared_reserve_value = (
-            shared_bnb_reserve
+            dedicated_bnb_reserve
             * bnb_mid
         )
 
@@ -570,7 +570,7 @@ def main():
         ):
 
             raise RuntimeError(
-                "Shared BNB fee reserve "
+                "Dedicated BNB fee reserve "
                 "is insufficient."
             )
 
@@ -873,8 +873,8 @@ def main():
             client=client,
             account=live_account,
             base_currency=base_currency,
-            shared_bnb_reserve=(
-                shared_bnb_reserve
+            dedicated_bnb_reserve=(
+                dedicated_bnb_reserve
             ),
         )
 

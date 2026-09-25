@@ -103,7 +103,7 @@ def require_physical_backing(
     ledger: PortfolioLedger,
     account: dict,
     base_currency: str,
-    shared_bnb_fee_reserve: Decimal,
+    dedicated_bnb_fee_reserve: Decimal,
     context: str,
 ) -> None:
 
@@ -122,7 +122,7 @@ def require_physical_backing(
         base_currency=base_currency,
         minimum_reserves={
             "BNB":
-                shared_bnb_fee_reserve,
+                dedicated_bnb_fee_reserve,
         },
     )
 
@@ -263,13 +263,13 @@ def main():
         )
     )
 
-    shared_bnb_fee_reserve = Decimal(
+    dedicated_bnb_fee_reserve = Decimal(
         str(
             config.get(
                 "account_isolation",
                 {},
             ).get(
-                "shared_bnb_fee_reserve",
+                "dedicated_bnb_fee_reserve",
                 "0",
             )
         )
@@ -506,8 +506,8 @@ def main():
         ledger=ledger,
         account=account,
         base_currency=base_currency,
-        shared_bnb_fee_reserve=(
-            shared_bnb_fee_reserve
+        dedicated_bnb_fee_reserve=(
+            dedicated_bnb_fee_reserve
         ),
         context="initial preflight",
     )
@@ -517,8 +517,8 @@ def main():
     )
 
     print(
-        "Shared BNB reserve: "
-        f"{shared_bnb_fee_reserve} BNB"
+        "Dedicated BNB reserve: "
+        f"{dedicated_bnb_fee_reserve} BNB"
     )
 
     exchange_info = (
@@ -796,23 +796,23 @@ def main():
             + bnb_book["ask"]
         ) / Decimal("2")
 
-        shared_bnb_fee_reserve_value = (
-            shared_bnb_fee_reserve
+        dedicated_bnb_fee_reserve_value = (
+            dedicated_bnb_fee_reserve
             * bnb_mid
         )
 
         if (
-            shared_bnb_fee_reserve_value
+            dedicated_bnb_fee_reserve_value
             < required_fee_buffer
         ):
             raise RuntimeError(
-                "Shared BNB fee reserve "
+                "Dedicated BNB fee reserve "
                 "is insufficient for the "
                 "planned executable turnover. "
                 f"reserve_bnb="
-                f"{shared_bnb_fee_reserve}, "
+                f"{dedicated_bnb_fee_reserve}, "
                 f"reserve_value="
-                f"{shared_bnb_fee_reserve_value}, "
+                f"{dedicated_bnb_fee_reserve_value}, "
                 f"required="
                 f"{required_fee_buffer}"
             )
@@ -975,12 +975,12 @@ def main():
 
     if bnb_discount_detected:
         print(
-            "Shared BNB fee reserve    : OK"
+            "Dedicated BNB fee reserve    : OK"
         )
 
         print(
-            "Shared reserve value      : "
-            f"{shared_bnb_fee_reserve_value:.8f} "
+            "Dedicated reserve value      : "
+            f"{dedicated_bnb_fee_reserve_value:.8f} "
             f"{base_currency}"
         )
 
@@ -1088,8 +1088,8 @@ def main():
             ledger=ledger,
             account=live_account,
             base_currency=base_currency,
-            shared_bnb_fee_reserve=(
-                shared_bnb_fee_reserve
+            dedicated_bnb_fee_reserve=(
+                dedicated_bnb_fee_reserve
             ),
             context=(
                 f"before {client_order_id}"

@@ -440,13 +440,13 @@ def main():
 
     account = client.get_account()
 
-    shared_bnb_reserve = Decimal(
+    dedicated_bnb_reserve = Decimal(
         str(
             config.get(
                 "account_isolation",
                 {},
             ).get(
-                "shared_bnb_fee_reserve",
+                "dedicated_bnb_fee_reserve",
                 "0",
             )
         )
@@ -459,7 +459,7 @@ def main():
         base_currency=currency,
         minimum_reserves={
             "BNB":
-                shared_bnb_reserve,
+                dedicated_bnb_reserve,
         },
     )
 

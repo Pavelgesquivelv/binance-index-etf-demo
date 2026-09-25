@@ -588,13 +588,13 @@ def load_dashboard_snapshot(
             account
         )
 
-        shared_bnb_reserve = (
+        dedicated_bnb_reserve = (
             _decimal(
                 config.get(
                     "account_isolation",
                     {},
                 ).get(
-                    "shared_bnb_fee_reserve",
+                    "dedicated_bnb_fee_reserve",
                     "0",
                 )
             )
@@ -613,7 +613,7 @@ def load_dashboard_snapshot(
             )
 
         if (
-            shared_bnb_reserve
+            dedicated_bnb_reserve
             > ZERO
         ):
 
@@ -622,7 +622,7 @@ def load_dashboard_snapshot(
                     "BNB",
                     ZERO,
                 )
-                + shared_bnb_reserve
+                + dedicated_bnb_reserve
             )
 
         for asset in sorted(

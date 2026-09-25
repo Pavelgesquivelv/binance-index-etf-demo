@@ -513,7 +513,7 @@ def main():
 
         # =============================================
         # State 5:
-        # Physical backing + shared BNB fee reserve.
+        # Physical backing + dedicated BNB fee reserve.
         #
         # Only required when a new, fresh portfolio
         # could actually become executable.
@@ -525,13 +525,13 @@ def main():
             ].upper()
         )
 
-        shared_bnb_fee_reserve = Decimal(
+        dedicated_bnb_fee_reserve = Decimal(
             str(
                 config.get(
                     "account_isolation",
                     {},
                 ).get(
-                    "shared_bnb_fee_reserve",
+                    "dedicated_bnb_fee_reserve",
                     "0",
                 )
             )
@@ -564,7 +564,7 @@ def main():
             base_currency=base_currency,
             minimum_reserves={
                 "BNB":
-                    shared_bnb_fee_reserve,
+                    dedicated_bnb_fee_reserve,
             },
         )
 
@@ -610,8 +610,8 @@ def main():
         )
 
         print(
-            "Shared BNB reserve : "
-            f"{shared_bnb_fee_reserve} BNB"
+            "Dedicated BNB reserve : "
+            f"{dedicated_bnb_fee_reserve} BNB"
         )
 
         print()

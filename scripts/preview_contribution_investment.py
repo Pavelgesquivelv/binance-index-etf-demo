@@ -338,13 +338,13 @@ def main():
     # backed before doing any contribution work.
     # -------------------------------------------------
 
-    shared_bnb_reserve = Decimal(
+    dedicated_bnb_reserve = Decimal(
         str(
             config.get(
                 "account_isolation",
                 {},
             ).get(
-                "shared_bnb_fee_reserve",
+                "dedicated_bnb_fee_reserve",
                 "0",
             )
         )
@@ -357,7 +357,7 @@ def main():
         base_currency=currency,
         minimum_reserves={
             "BNB":
-                shared_bnb_reserve,
+                dedicated_bnb_reserve,
         },
     )
 
@@ -498,7 +498,7 @@ def main():
         ) / Decimal("2")
 
         shared_reserve_value = (
-            shared_bnb_reserve
+            dedicated_bnb_reserve
             * mid
         )
 
@@ -508,7 +508,7 @@ def main():
         ):
 
             raise RuntimeError(
-                "Shared BNB fee reserve is "
+                "Dedicated BNB fee reserve is "
                 "insufficient for contribution "
                 "investment. "
                 f"reserve_value="
@@ -600,8 +600,8 @@ def main():
         )
 
         print(
-            f"Shared reserve BNB : "
-            f"{shared_bnb_reserve}"
+            f"Dedicated reserve BNB : "
+            f"{dedicated_bnb_reserve}"
         )
 
         print(
