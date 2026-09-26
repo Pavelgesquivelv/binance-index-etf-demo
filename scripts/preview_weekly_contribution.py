@@ -16,6 +16,13 @@ sys.path.insert(0, str(ROOT))
 from src.contributions.contribution_planner import (
     ContributionPlanner,
 )
+from src.contributions.funding_preview import (
+    apply_funding_reserve_override,
+    resolve_funding_preview,
+)
+from src.contributions.funding_repository import (
+    ContributionFundingRepository,
+)
 from src.contributions.contribution_schedule import (
     resolve_weekly_period,
 )
@@ -135,13 +142,14 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--simulate-new-cash",
+        "--simulate-funding-balance",
         type=Decimal,
         default=None,
         help=(
-            "Dry-run only. Override detected "
-            "new physical cash for testing. "
-            "Does not modify Binance or SQLite."
+            "Dry-run only. Override the "
+            "contribution funding reserve "
+            "for preview testing. Does not "
+            "modify Binance or SQLite."
         ),
     )
 
@@ -321,6 +329,10 @@ def main():
 
     ledger = PortfolioLedger(
         database
+    )
+
+    funding_repository = (
+        ContributionFundingRepository()
     )
 
     feed = PortfolioFeedLoader(
@@ -528,19 +540,54 @@ def main():
         )
     )
 
+    with database.connection() as conn:
+
+        actual_funding = (
+            funding_repository.get_balance(
+                conn,
+                currency,
+            )
+        )
+
+    funding_preview = (
+        resolve_funding_preview(
+            actual_balance=actual_funding,
+            simulated_balance=(
+                args.simulate_funding_balance
+            ),
+        )
+    )
+
+    actual_reserves = (
+        build_owned_minimum_reserves_from_database(
+            database,
+            base_currency=currency,
+            dedicated_bnb_fee_reserve=(
+                dedicated_bnb_reserve
+            ),
+        )
+    )
+
+    effective_reserves = (
+        apply_funding_reserve_override(
+            minimum_reserves=actual_reserves,
+            currency=currency,
+            actual_funding=(
+                funding_preview.actual_balance
+            ),
+            effective_funding=(
+                funding_preview.effective_balance
+            ),
+        )
+    )
+
     backing = check_physical_backing(
         cash=cash,
         positions=positions,
         account=account,
         base_currency=currency,
         minimum_reserves=(
-            build_owned_minimum_reserves_from_database(
-                database,
-                base_currency=currency,
-                dedicated_bnb_fee_reserve=(
-                    dedicated_bnb_reserve
-                ),
-            )
+            effective_reserves
         ),
     )
 
@@ -568,20 +615,8 @@ def main():
         )
     )
 
-    actual_new_cash = max(
-        exchange_free_cash - cash,
-        ZERO,
-    )
-
-    simulated = (
-        args.simulate_new_cash
-        is not None
-    )
-
-    detected_new_cash = (
-        args.simulate_new_cash
-        if simulated
-        else actual_new_cash
+    available_funding = (
+        funding_preview.effective_balance
     )
 
     nav_before, market_value = (
@@ -678,16 +713,16 @@ def main():
     )
 
     print(
-        f"Actual new cash    : "
-        f"{actual_new_cash:.8f} "
+        f"Actual funding     : "
+        f"{funding_preview.actual_balance:.8f} "
         f"{currency}"
     )
 
-    if simulated:
+    if funding_preview.simulated:
 
         print(
-            f"SIMULATED new cash : "
-            f"{detected_new_cash:.8f} "
+            f"SIMULATED funding  : "
+            f"{available_funding:.8f} "
             f"{currency}"
         )
 
@@ -698,7 +733,7 @@ def main():
 
     print()
 
-    if detected_new_cash < amount:
+    if available_funding < amount:
 
         print(
             "Decision           : "
@@ -706,8 +741,8 @@ def main():
         )
 
         print(
-            "Missing            : "
-            f"{amount - detected_new_cash:.8f} "
+            "Funding missing    : "
+            f"{amount - available_funding:.8f} "
             f"{currency}"
         )
 
@@ -724,7 +759,7 @@ def main():
         return
 
     print(
-        "Physical cash      : OK"
+        "Funding reserve    : OK"
     )
 
     print(
@@ -804,7 +839,7 @@ def main():
 
     print()
 
-    if simulated:
+    if funding_preview.simulated:
         print(
             "SIMULATION ONLY."
         )

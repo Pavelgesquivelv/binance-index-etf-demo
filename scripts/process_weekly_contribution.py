@@ -18,6 +18,9 @@ from src.contributions.contribution_repository import (
     STATUS_ACCEPTED,
     STATUS_COMPLETED,
 )
+from src.contributions.funding_repository import (
+    ContributionFundingRepository,
+)
 from src.contributions.contribution_schedule import (
     resolve_weekly_period,
 )
@@ -310,6 +313,10 @@ def main():
         ContributionRepository()
     )
 
+    funding_repository = (
+        ContributionFundingRepository()
+    )
+
     ledger = PortfolioLedger(
         database
     )
@@ -581,11 +588,14 @@ def main():
         )
     )
 
-    detected_new_cash = max(
-        exchange_free_cash
-        - cash_before,
-        ZERO,
-    )
+    with database.connection() as conn:
+
+        funding_available = (
+            funding_repository.get_balance(
+                conn,
+                currency,
+            )
+        )
 
     print()
 
@@ -602,8 +612,8 @@ def main():
     )
 
     print(
-        f"Detected new cash  : "
-        f"{detected_new_cash:.8f} "
+        f"Funding reserve    : "
+        f"{funding_available:.8f} "
         f"{currency}"
     )
 
@@ -613,11 +623,11 @@ def main():
         f"{currency}"
     )
 
-    if detected_new_cash < amount:
+    if funding_available < amount:
 
         missing = (
             amount
-            - detected_new_cash
+            - funding_available
         )
 
         print()
@@ -628,7 +638,7 @@ def main():
         )
 
         print(
-            f"Missing            : "
+            f"Funding missing    : "
             f"{missing:.8f} "
             f"{currency}"
         )
@@ -650,14 +660,14 @@ def main():
                     currency=currency,
                     expected_amount=amount,
                     detected_amount=(
-                        detected_new_cash
+                        funding_available
                     ),
                     feed_cutoff_utc=(
                         feed.cutoff_utc
                     ),
                     notes=(
-                        "Waiting for full "
-                        "physical contribution."
+                        "Insufficient contribution "
+                        "funding reserve."
                     ),
                 )
 
@@ -736,7 +746,7 @@ def main():
     )
 
     print(
-        "Physical cash      : OK"
+        "Funding reserve    : OK"
     )
 
     print()
@@ -819,6 +829,47 @@ def main():
 
     with database.connection() as conn:
 
+        # Re-read inside the transaction so the
+        # decision cannot rely on stale funding.
+        funding_before_txn = (
+            funding_repository.get_balance(
+                conn,
+                currency,
+            )
+        )
+
+        if funding_before_txn < amount:
+            raise RuntimeError(
+                "Contribution funding reserve "
+                "changed before acceptance. "
+                f"available="
+                f"{funding_before_txn}, "
+                f"required={amount} "
+                f"{currency}"
+            )
+
+        # Ownership transfer:
+        #
+        # contribution funding reserve  -200
+        # ETF cash                      +200
+        #
+        # Both operations use the same SQLite
+        # transaction. Any later exception rolls
+        # back funding and ETF accounting together.
+        funding_repository.consume_for_contribution(
+            conn,
+            currency=currency,
+            amount=amount,
+            period_id=(
+                period.period_id
+            ),
+            notes=(
+                "Funding transferred into "
+                "ETF ownership at contribution "
+                "acceptance."
+            ),
+        )
+
         result = (
             repository.accept_contribution(
                 conn,
@@ -832,9 +883,7 @@ def main():
                 ),
                 currency=currency,
                 amount=amount,
-                detected_amount=(
-                    detected_new_cash
-                ),
+                detected_amount=amount,
                 feed_cutoff_utc=(
                     feed.cutoff_utc
                 ),
@@ -859,6 +908,107 @@ def main():
             )
         )
 
+        funding_after_txn = (
+            funding_repository.get_balance(
+                conn,
+                currency,
+            )
+        )
+
+        expected_funding_after = (
+            funding_before_txn
+            - amount
+        )
+
+        if (
+            funding_after_txn
+            != expected_funding_after
+        ):
+            raise RuntimeError(
+                "Atomic funding debit "
+                "verification failed."
+            )
+
+        cash_after_txn = sum(
+            (
+                Decimal(row["amount"])
+                for row in conn.execute(
+                    """
+                    SELECT amount
+                    FROM cash_ledger
+                    WHERE asset = ?
+                    ORDER BY id
+                    """,
+                    (currency,),
+                ).fetchall()
+            ),
+            ZERO,
+        )
+
+        expected_cash_after = (
+            cash_before
+            + amount
+        )
+
+        if (
+            cash_after_txn
+            != expected_cash_after
+        ):
+            raise RuntimeError(
+                "Atomic ETF cash credit "
+                "verification failed."
+            )
+
+        shares_row = conn.execute(
+            """
+            SELECT value
+            FROM meta
+            WHERE key = 'shares_outstanding'
+            """
+        ).fetchone()
+
+        if shares_row is None:
+            raise RuntimeError(
+                "shares_outstanding metadata "
+                "was not found."
+            )
+
+        shares_after_txn = Decimal(
+            shares_row["value"]
+        )
+
+        if (
+            shares_after_txn
+            != result["shares_after"]
+        ):
+            raise RuntimeError(
+                "Atomic share issuance "
+                "verification failed."
+            )
+
+        # Ownership conservation:
+        #
+        # ETF cash + remaining funding reserve
+        # must remain constant during this transfer.
+        owned_usdc_before = (
+            cash_before
+            + funding_before_txn
+        )
+
+        owned_usdc_after = (
+            cash_after_txn
+            + funding_after_txn
+        )
+
+        if (
+            owned_usdc_after
+            != owned_usdc_before
+        ):
+            raise RuntimeError(
+                "Contribution ownership "
+                "conservation failed."
+            )
+
     # -------------------------------------------------
     # Post-commit verification.
     # -------------------------------------------------
@@ -874,6 +1024,15 @@ def main():
             "shares_outstanding"
         )
     )
+
+    with database.connection() as conn:
+
+        funding_after_check = (
+            funding_repository.get_balance(
+                conn,
+                currency,
+            )
+        )
 
     expected_cash_after = (
         cash_before
@@ -898,6 +1057,15 @@ def main():
             "verification failed."
         )
 
+    if (
+        funding_after_check
+        != expected_funding_after
+    ):
+        raise RuntimeError(
+            "Post-acceptance funding "
+            "verification failed."
+        )
+
     print()
 
     print(
@@ -914,6 +1082,12 @@ def main():
     print(
         f"Cash after         : "
         f"{cash_after_check:.8f} "
+        f"{currency}"
+    )
+
+    print(
+        f"Funding after      : "
+        f"{funding_after_check:.8f} "
         f"{currency}"
     )
 
