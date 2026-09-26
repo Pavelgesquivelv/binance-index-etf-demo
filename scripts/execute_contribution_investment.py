@@ -54,6 +54,9 @@ from src.index.portfolio_feed import (
 from src.portfolio.ledger import (
     PortfolioLedger,
 )
+from src.portfolio.execution_ownership import (
+    check_owned_capacity,
+)
 from src.portfolio.owned_reserves import (
     build_owned_minimum_reserves_from_database,
 )
@@ -951,6 +954,47 @@ def main():
             live_account,
             base_currency,
         )
+
+        etf_owned_quote = (
+            ledger.get_cash_balance(
+                base_currency
+            )
+        )
+
+        ownership = check_owned_capacity(
+            asset=base_currency,
+            owned_quantity=etf_owned_quote,
+            required_quantity=(
+                intent.quote_order_qty
+            ),
+        )
+
+        if not ownership.ok:
+
+            message = (
+                "Contribution BUY would consume "
+                "funds not owned by the ETF. "
+                f"asset={base_currency}, "
+                f"ETF-owned="
+                f"{ownership.owned_quantity}, "
+                f"required="
+                f"{ownership.required_quantity}."
+            )
+
+            mark_recovery(
+                database=database,
+                repository=(
+                    contribution_repository
+                ),
+                contribution_id=(
+                    contribution_id
+                ),
+                message=message,
+            )
+
+            raise RuntimeError(
+                message
+            )
 
         if (
             free_quote

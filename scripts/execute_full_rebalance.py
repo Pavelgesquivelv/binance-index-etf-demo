@@ -41,6 +41,9 @@ from src.index.portfolio_feed import (
 from src.portfolio.ledger import (
     PortfolioLedger,
 )
+from src.portfolio.execution_ownership import (
+    check_owned_capacity,
+)
 from src.portfolio.owned_reserves import (
     build_owned_minimum_reserves_from_database,
 )
@@ -721,6 +724,16 @@ def main():
 
     for line in execution_lines:
 
+        if (
+            line.action == "BUY"
+            and line.quote_order_qty is None
+        ):
+            raise RuntimeError(
+                "Execution ownership guard "
+                "requires every BUY to use "
+                "quote_order_qty."
+            )
+
         if line.quote_order_qty is not None:
 
             response = (
@@ -1137,23 +1150,36 @@ def main():
                 )
             )
 
-            if (
+            required_quote = (
                 line.quote_order_qty
-                is not None
-            ):
+            )
 
-                required_quote = (
-                    line.quote_order_qty
+            if required_quote is None:
+                raise RuntimeError(
+                    "Execution ownership guard "
+                    "requires quote_order_qty "
+                    "for BUY orders."
                 )
 
-            else:
-
-                # Conservative fallback for a BUY
-                # expressed in base quantity.
-                required_quote = (
-                    line.estimated_notional
-                    * Decimal("1.01")
+            etf_owned_quote = (
+                ledger.get_cash_balance(
+                    base_currency
                 )
+            )
+
+            ownership = check_owned_capacity(
+                asset=base_currency,
+                owned_quantity=etf_owned_quote,
+                required_quantity=(
+                    required_quote
+                ),
+            )
+
+            print(
+                f"ETF-owned "
+                f"{base_currency:4}: "
+                f"{etf_owned_quote}"
+            )
 
             print(
                 f"Free {base_currency:4}   : "
@@ -1164,6 +1190,36 @@ def main():
                 f"Required quote : "
                 f"{required_quote}"
             )
+
+            if not ownership.ok:
+
+                with database.connection() as conn:
+
+                    accounting.finish_rebalance(
+                        conn,
+                        rebalance_run_id=run_id,
+                        status=(
+                            "BLOCKED_OWNERSHIP_GUARD"
+                        ),
+                        notes=(
+                            f"{line.symbol} BUY: "
+                            f"ETF-owned="
+                            f"{ownership.owned_quantity}, "
+                            f"required="
+                            f"{ownership.required_quantity}"
+                        ),
+                    )
+
+                raise RuntimeError(
+                    "Rebalance stopped: BUY "
+                    "would consume funds not "
+                    "owned by the ETF. "
+                    f"asset={base_currency}, "
+                    f"ETF-owned="
+                    f"{ownership.owned_quantity}, "
+                    f"required="
+                    f"{ownership.required_quantity}."
+                )
 
             if (
                 live_free_quote
@@ -1210,10 +1266,64 @@ def main():
                 or ZERO
             )
 
+            etf_positions = get_positions(
+                ledger
+            )
+
+            etf_owned_asset = (
+                etf_positions.get(
+                    line.asset,
+                    ZERO,
+                )
+            )
+
+            ownership = check_owned_capacity(
+                asset=line.asset,
+                owned_quantity=etf_owned_asset,
+                required_quantity=(
+                    required_quantity
+                ),
+            )
+
+            print(
+                f"ETF-owned {line.asset:4}: "
+                f"{etf_owned_asset}"
+            )
+
             print(
                 f"Free {line.asset:4}   : "
                 f"{live_free_asset}"
             )
+
+            if not ownership.ok:
+
+                with database.connection() as conn:
+
+                    accounting.finish_rebalance(
+                        conn,
+                        rebalance_run_id=run_id,
+                        status=(
+                            "BLOCKED_OWNERSHIP_GUARD"
+                        ),
+                        notes=(
+                            f"{line.symbol} SELL: "
+                            f"ETF-owned="
+                            f"{ownership.owned_quantity}, "
+                            f"required="
+                            f"{ownership.required_quantity}"
+                        ),
+                    )
+
+                raise RuntimeError(
+                    "Rebalance stopped: SELL "
+                    "would consume inventory not "
+                    "owned by the ETF. "
+                    f"asset={line.asset}, "
+                    f"ETF-owned="
+                    f"{ownership.owned_quantity}, "
+                    f"required="
+                    f"{ownership.required_quantity}."
+                )
 
             print(
                 f"Required qty   : "
