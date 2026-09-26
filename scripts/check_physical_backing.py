@@ -17,6 +17,9 @@ from src.exchange.binance_demo_client import (
 from src.portfolio.ledger import (
     PortfolioLedger,
 )
+from src.portfolio.owned_reserves import (
+    build_owned_minimum_reserves_from_database,
+)
 from src.portfolio.physical_backing import (
     check_physical_backing,
 )
@@ -94,9 +97,15 @@ def main():
         positions=positions,
         account=account,
         base_currency=base_currency,
-        minimum_reserves={
-            "BNB": dedicated_bnb_reserve,
-        },
+        minimum_reserves=(
+            build_owned_minimum_reserves_from_database(
+                database,
+                base_currency=base_currency,
+                dedicated_bnb_fee_reserve=(
+                    dedicated_bnb_reserve
+                ),
+            )
+        ),
     )
 
     print("=" * 125)

@@ -54,6 +54,9 @@ from src.index.portfolio_feed import (
 from src.portfolio.ledger import (
     PortfolioLedger,
 )
+from src.portfolio.owned_reserves import (
+    build_owned_minimum_reserves_from_database,
+)
 from src.portfolio.physical_backing import (
     check_physical_backing,
 )
@@ -172,6 +175,7 @@ def calculate_live_nav(
 def require_backing(
     *,
     ledger: PortfolioLedger,
+    database: Database,
     client: BinanceDemoClient,
     account: dict,
     base_currency: str,
@@ -191,10 +195,15 @@ def require_backing(
         positions=positions,
         account=account,
         base_currency=base_currency,
-        minimum_reserves={
-            "BNB":
-                dedicated_bnb_reserve,
-        },
+        minimum_reserves=(
+            build_owned_minimum_reserves_from_database(
+                database,
+                base_currency=base_currency,
+                dedicated_bnb_fee_reserve=(
+                    dedicated_bnb_reserve
+                ),
+            )
+        ),
     )
 
     if not backing.ok:
@@ -506,6 +515,7 @@ def main():
 
     require_backing(
         ledger=ledger,
+        database=database,
         client=client,
         account=account,
         base_currency=base_currency,
@@ -928,6 +938,7 @@ def main():
 
         require_backing(
             ledger=ledger,
+            database=database,
             client=client,
             account=live_account,
             base_currency=base_currency,

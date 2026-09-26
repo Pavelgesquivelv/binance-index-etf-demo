@@ -41,6 +41,9 @@ from src.index.portfolio_feed import (
 from src.portfolio.ledger import (
     PortfolioLedger,
 )
+from src.portfolio.owned_reserves import (
+    build_owned_minimum_reserves_from_database,
+)
 from src.portfolio.physical_backing import (
     check_physical_backing,
 )
@@ -108,6 +111,7 @@ def get_positions(
 def require_physical_backing(
     *,
     ledger: PortfolioLedger,
+    database: Database,
     account: dict,
     base_currency: str,
     dedicated_bnb_fee_reserve: Decimal,
@@ -127,10 +131,15 @@ def require_physical_backing(
         positions=positions,
         account=account,
         base_currency=base_currency,
-        minimum_reserves={
-            "BNB":
-                dedicated_bnb_fee_reserve,
-        },
+        minimum_reserves=(
+            build_owned_minimum_reserves_from_database(
+                database,
+                base_currency=base_currency,
+                dedicated_bnb_fee_reserve=(
+                    dedicated_bnb_fee_reserve
+                ),
+            )
+        ),
     )
 
     if result.ok:
@@ -521,6 +530,7 @@ def main():
 
     require_physical_backing(
         ledger=ledger,
+        database=database,
         account=account,
         base_currency=base_currency,
         dedicated_bnb_fee_reserve=(
@@ -1103,6 +1113,7 @@ def main():
 
         require_physical_backing(
             ledger=ledger,
+            database=database,
             account=live_account,
             base_currency=base_currency,
             dedicated_bnb_fee_reserve=(

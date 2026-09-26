@@ -37,6 +37,9 @@ from src.index.portfolio_feed import (
 from src.portfolio.ledger import (
     PortfolioLedger,
 )
+from src.portfolio.owned_reserves import (
+    build_owned_minimum_reserves_from_database,
+)
 from src.portfolio.physical_backing import (
     check_physical_backing,
 )
@@ -541,10 +544,15 @@ def main():
         positions=positions,
         account=account,
         base_currency=currency,
-        minimum_reserves={
-            "BNB":
-                dedicated_bnb_reserve,
-        },
+        minimum_reserves=(
+            build_owned_minimum_reserves_from_database(
+                database,
+                base_currency=currency,
+                dedicated_bnb_fee_reserve=(
+                    dedicated_bnb_reserve
+                ),
+            )
+        ),
     )
 
     if not backing.ok:

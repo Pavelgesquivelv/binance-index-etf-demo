@@ -79,8 +79,6 @@ class ContributionFundingRepository:
         currency: str,
     ) -> Decimal:
 
-        self.ensure_schema(conn)
-
         currency = currency.upper()
 
         rows = conn.execute(
@@ -116,8 +114,6 @@ class ContributionFundingRepository:
         currency: str,
     ):
 
-        self.ensure_schema(conn)
-
         return conn.execute(
             """
             SELECT *
@@ -136,8 +132,6 @@ class ContributionFundingRepository:
         amount: Decimal,
         notes: str | None = None,
     ) -> Decimal:
-
-        self.ensure_schema(conn)
 
         currency = currency.upper()
 
@@ -201,8 +195,6 @@ class ContributionFundingRepository:
         period_id: str,
         notes: str | None = None,
     ) -> Decimal:
-
-        self.ensure_schema(conn)
 
         currency = currency.upper()
 

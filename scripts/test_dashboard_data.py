@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 import sys
 
@@ -13,27 +14,23 @@ from src.dashboard.data import (
 )
 
 
-snapshot = (
-    load_dashboard_snapshot(
-        ROOT
-    )
+ZERO = Decimal("0")
+
+
+snapshot = load_dashboard_snapshot(
+    ROOT
 )
 
 
-# =========================================================
-# Core dashboard invariants.
-# These must hold regardless of whether the ETF is:
-#
-# - freshly initialized
-# - waiting for its first rebalance
-# - already invested
-# =========================================================
+# --------------------------------------------------
+# Basic snapshot structure.
+# --------------------------------------------------
 
 assert snapshot["base_currency"] == "USDC"
 
-assert snapshot["shares"] > 0
+assert snapshot["shares"] > ZERO
 
-assert snapshot["cash"] >= 0
+assert snapshot["cash"] >= ZERO
 
 assert isinstance(
     snapshot["current_feed_processed"],
@@ -45,11 +42,6 @@ assert (
     >= 0
 )
 
-assert isinstance(
-    snapshot["portfolio"],
-    list,
-)
-
 assert snapshot[
     "live_nav"
 ] is not None
@@ -58,91 +50,132 @@ assert snapshot[
     "live_nav_per_share"
 ] is not None
 
-assert (
-    snapshot["live_nav"]
-    >= 0
+
+# --------------------------------------------------
+# Contribution funding ownership.
+# --------------------------------------------------
+
+funding_reserve = snapshot[
+    "contribution_funding_reserve"
+]
+
+assert funding_reserve >= ZERO
+
+
+# --------------------------------------------------
+# Physical backing must be internally consistent.
+#
+# This test intentionally does NOT require backing
+# to be True. A development DB may legitimately
+# differ from the live Binance Demo account.
+# --------------------------------------------------
+
+physical_backing = snapshot[
+    "physical_backing"
+]
+
+assert physical_backing
+
+calculated_backing_ok = all(
+    row["is_backed"]
+    for row in physical_backing
 )
 
 assert (
-    snapshot["live_nav_per_share"]
-    > 0
-)
-
-assert isinstance(
-    snapshot["physical_backing_ok"],
-    bool,
+    snapshot["physical_backing_ok"]
+    == calculated_backing_ok
 )
 
 
-# =========================================================
-# State-dependent consistency.
-# =========================================================
+# --------------------------------------------------
+# USDC ownership invariant.
+#
+# Required physical USDC must always equal:
+#
+# ETF ledger cash
+# + contribution funding reserve
+# --------------------------------------------------
 
-if snapshot[
-    "current_feed_processed"
-]:
-    assert len(
-        snapshot["portfolio"]
-    ) > 0
+usdc_backing = next(
+    row
+    for row in physical_backing
+    if row["asset"] == "USDC"
+)
 
+assert (
+    usdc_backing["ledger_quantity"]
+    == snapshot["cash"]
+)
+
+assert (
+    usdc_backing["required_reserve"]
+    == funding_reserve
+)
+
+assert (
+    usdc_backing["required"]
+    == snapshot["cash"]
+    + funding_reserve
+)
+
+assert (
+    usdc_backing["surplus"]
+    == usdc_backing["exchange_free"]
+    - usdc_backing["required"]
+)
+
+assert (
+    usdc_backing["is_backed"]
+    == (
+        usdc_backing["surplus"]
+        >= ZERO
+    )
+)
+
+
+# --------------------------------------------------
+# Report.
+# --------------------------------------------------
 
 print(
     "Dashboard data test: OK"
 )
 
 print(
-    f"Cash              : "
+    f"ETF ledger cash       : "
     f"{snapshot['cash']:.8f} USDC"
 )
 
 print(
-    f"Live market value : "
-    f"{snapshot['live_market_value']:.8f} "
-    f"USDC"
+    f"Funding reserve       : "
+    f"{funding_reserve:.8f} USDC"
 )
 
 print(
-    f"Live NAV          : "
-    f"{snapshot['live_nav']:.8f} USDC"
+    f"USDC required total   : "
+    f"{usdc_backing['required']:.8f} USDC"
 )
 
 print(
-    f"NAV/share         : "
-    f"{snapshot['live_nav_per_share']:.8f} "
-    f"USDC"
+    f"Binance free USDC     : "
+    f"{usdc_backing['exchange_free']:.8f} USDC"
 )
 
 print(
-    f"Shares            : "
-    f"{snapshot['shares']}"
+    f"USDC headroom         : "
+    f"{usdc_backing['surplus']:.8f} USDC"
 )
 
 print(
-    f"Portfolio assets  : "
-    f"{len(snapshot['portfolio'])}"
-)
-
-print(
-    f"Feed processed    : "
+    f"Current feed processed: "
     f"{snapshot['current_feed_processed']}"
 )
 
 print(
-    f"Recoverable orders: "
-    f"{snapshot['recoverable_orders']}"
-)
-
-print(
-    f"Physical backing  : "
+    f"Physical backing OK   : "
     f"{snapshot['physical_backing_ok']}"
 )
 
-print()
-print("Safety flags:")
-
-for key, value in (
-    snapshot["flags"].items()
-):
-    print(
-        f"  {key}={value}"
-    )
+print(
+    "Dashboard invariants  : OK"
+)

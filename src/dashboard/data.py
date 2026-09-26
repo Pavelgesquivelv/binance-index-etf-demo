@@ -16,6 +16,12 @@ from src.exchange.binance_demo_client import (
 from src.index.portfolio_feed import (
     PortfolioFeedLoader,
 )
+from src.portfolio.owned_reserves import (
+    build_owned_minimum_reserves,
+)
+from src.portfolio.physical_backing import (
+    check_physical_backing,
+)
 
 
 ZERO = Decimal("0")
@@ -123,6 +129,32 @@ def _free_balances(
             [],
         )
     }
+
+
+def _owned_reserves_read_only(
+    database_path: Path,
+    *,
+    base_currency: str,
+    dedicated_bnb_fee_reserve: Decimal,
+) -> dict[str, Decimal]:
+
+    conn = _connect_read_only(
+        database_path
+    )
+
+    try:
+
+        return build_owned_minimum_reserves(
+            conn,
+            base_currency=base_currency,
+            dedicated_bnb_fee_reserve=(
+                dedicated_bnb_fee_reserve
+            ),
+        )
+
+    finally:
+
+        conn.close()
 
 
 def load_dashboard_snapshot(
@@ -576,17 +608,17 @@ def load_dashboard_snapshot(
     # Physical backing.
     #
     # ETF ownership comes from SQLite.
-    # Binance balances are used only to verify
-    # that the owned inventory physically exists.
+    # Owned reserves outside the ETF ledger are loaded
+    # read-only from the common reserve layer.
     # --------------------------------------------------
 
     physical_backing = []
 
-    if account is not None:
+    contribution_funding_reserve = ZERO
 
-        free = _free_balances(
-            account
-        )
+    backing_ok = False
+
+    if account is not None:
 
         dedicated_bnb_reserve = (
             _decimal(
@@ -600,70 +632,63 @@ def load_dashboard_snapshot(
             )
         )
 
-        requirements = {
-            base_currency: cash,
+        minimum_reserves = (
+            _owned_reserves_read_only(
+                database_path,
+                base_currency=base_currency,
+                dedicated_bnb_fee_reserve=(
+                    dedicated_bnb_reserve
+                ),
+            )
+        )
+
+        contribution_funding_reserve = (
+            minimum_reserves.get(
+                base_currency,
+                ZERO,
+            )
+        )
+
+        owned_positions = {
+            row["asset"]:
+                _decimal(
+                    row["quantity"]
+                )
+            for row in positions
+            if _decimal(
+                row["quantity"]
+            ) != ZERO
         }
 
-        for row in positions:
-
-            requirements[
-                row["asset"]
-            ] = _decimal(
-                row["quantity"]
-            )
-
-        if (
-            dedicated_bnb_reserve
-            > ZERO
-        ):
-
-            requirements["BNB"] = (
-                requirements.get(
-                    "BNB",
-                    ZERO,
-                )
-                + dedicated_bnb_reserve
-            )
-
-        for asset in sorted(
-            requirements
-        ):
-
-            required = (
-                requirements[asset]
-            )
-
-            exchange_free = (
-                free.get(
-                    asset,
-                    ZERO,
-                )
-            )
-
-            surplus = (
-                exchange_free
-                - required
-            )
-
-            physical_backing.append(
-                {
-                    "asset": asset,
-                    "required": required,
-                    "exchange_free":
-                        exchange_free,
-                    "surplus": surplus,
-                    "is_backed":
-                        surplus >= ZERO,
-                }
-            )
-
-    backing_ok = (
-        bool(physical_backing)
-        and all(
-            row["is_backed"]
-            for row in physical_backing
+        backing = check_physical_backing(
+            cash=cash,
+            positions=owned_positions,
+            account=account,
+            base_currency=base_currency,
+            minimum_reserves=(
+                minimum_reserves
+            ),
         )
-    )
+
+        physical_backing = [
+            {
+                "asset": line.asset,
+                "ledger_quantity":
+                    line.ledger_quantity,
+                "required_reserve":
+                    line.required_reserve,
+                "required":
+                    line.required_total,
+                "exchange_free":
+                    line.exchange_free,
+                "surplus": line.surplus,
+                "is_backed":
+                    line.is_backed,
+            }
+            for line in backing.lines
+        ]
+
+        backing_ok = backing.ok
 
     # --------------------------------------------------
     # Feed age is informational.
@@ -824,6 +849,8 @@ def load_dashboard_snapshot(
         "live_nav_per_share":
             live_nav_per_share,
 
+        "contribution_funding_reserve":
+            contribution_funding_reserve,
         "physical_backing":
             physical_backing,
 
