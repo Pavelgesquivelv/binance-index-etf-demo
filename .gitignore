@@ -96,3 +96,14 @@ Thumbs.db
 desktop.ini
 # VS Code workspace files
 *.code-workspace
+
+# Runtime ETF portfolio feeds
+!data/feeds/
+!data/feeds/.gitkeep
+!data/feeds/archive/
+!data/feeds/archive/.gitkeep
+
+data/feeds/current.json
+data/feeds/archive/*.json
+data/feeds/archive/*.manifest.json
+

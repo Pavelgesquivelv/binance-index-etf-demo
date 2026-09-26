@@ -216,11 +216,20 @@ examples/portfolio.example.json
 
 Runtime portfolio files belong under:
 
-data/
+data/feeds/
 
-For example:
+The active ETF portfolio is:
 
-data/portfolio_seed.json
+data/feeds/current.json
+
+Validated month-end portfolios are archived under:
+
+data/feeds/archive/
+
+The monthly feed bridge imports the exact expected
+portfolio for the last calendar day of each month
+from the upstream index process. Runtime feed JSON
+files are intentionally excluded from Git.
 
 The execution engine primarily uses:
 
@@ -468,9 +477,19 @@ Do not commit .env.
 
 Initial Configuration
 
-Create a runtime portfolio feed:
+Create the runtime feed directories:
 
-cp examples/portfolio.example.json data/portfolio_seed.json
+mkdir -p data/feeds/archive
+
+For local bootstrap or development only, a sample
+portfolio can be copied to the configured runtime
+location:
+
+cp examples/portfolio.example.json data/feeds/current.json
+
+In production, data/feeds/current.json is populated
+by the validated monthly index feed bridge rather
+than edited manually.
 
 The default fund configuration is located in:
 
@@ -486,7 +505,7 @@ fund:
   order_prefix: IDXETF_
 
 index_feed:
-  portfolio_file: data/portfolio_seed.json
+  portfolio_file: data/feeds/current.json
 
 storage:
   database: data/index_etf.db

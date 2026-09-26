@@ -5,7 +5,7 @@ fund:
   shares_outstanding: '50'
   order_prefix: IDXETF_
 index_feed:
-  portfolio_file: data/portfolio_seed.json
+  portfolio_file: data/feeds/current.json
 storage:
   database: data/index_etf.db
 environment:
@@ -38,3 +38,23 @@ cash_contributions:
   execution:
     max_orders: 20
     fee_buffer_multiplier: '2'
+
+index_feed_bridge:
+  enabled: true
+  source_directory: /home/cryptobot/crypto_index/runs/daily/portfolios
+  filename_template: portfolio_{cutoff_date}.json
+
+  cutoff:
+    frequency: monthly
+    rule: last_calendar_day
+    time_local: '07:00'
+    timezone: America/Mexico_City
+    grace_minutes: 15
+
+  source_stability:
+    settle_seconds: 1.0
+
+  destination:
+    current_file: data/feeds/current.json
+    archive_directory: data/feeds/archive
+
