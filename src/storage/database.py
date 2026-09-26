@@ -73,6 +73,46 @@ class Database:
                     notes TEXT
                 );
 
+                CREATE TABLE IF NOT EXISTS contribution_funding_ledger (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                    timestamp_utc TEXT NOT NULL,
+                    currency TEXT NOT NULL,
+
+                    amount TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+
+                    reference TEXT NOT NULL UNIQUE,
+                    notes TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS
+                    ix_contribution_funding_currency
+                    ON contribution_funding_ledger(
+                        currency,
+                        id
+                    );
+
+                CREATE TRIGGER IF NOT EXISTS
+                    tr_contribution_funding_no_update
+                BEFORE UPDATE ON contribution_funding_ledger
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'contribution_funding_ledger is append-only'
+                    );
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS
+                    tr_contribution_funding_no_delete
+                BEFORE DELETE ON contribution_funding_ledger
+                BEGIN
+                    SELECT RAISE(
+                        ABORT,
+                        'contribution_funding_ledger is append-only'
+                    );
+                END;
+
                 CREATE TABLE IF NOT EXISTS positions (
                     asset TEXT PRIMARY KEY,
                     quantity TEXT NOT NULL,
