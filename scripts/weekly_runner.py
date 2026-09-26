@@ -19,6 +19,13 @@ sys.path.insert(0, str(ROOT))
 from src.exchange.binance_demo_client import (
     BinanceDemoClient,
 )
+from src.index.feed_calendar import (
+    CURRENT,
+    FUTURE_INVALID,
+    STALE_MISSING_MONTHLY_REBALANCE,
+    WAITING_FOR_MONTH_END_FEED,
+    classify_feed_cutoff,
+)
 from src.index.portfolio_feed import (
     PortfolioFeedLoader,
 )
@@ -198,41 +205,10 @@ def main():
 
         cutoff = feed.cutoff_utc
 
-        max_age_hours = Decimal(
-            str(
-                config["index_feed"][
-                    "max_age_hours"
-                ]
-            )
-        )
-
-        cutoff_dt = (
-            datetime.fromisoformat(
+        calendar_state = (
+            classify_feed_cutoff(
                 cutoff
             )
-        )
-
-        if cutoff_dt.tzinfo is None:
-
-            raise RuntimeError(
-                "Portfolio cutoff_utc has "
-                "no timezone information."
-            )
-
-        now_utc = datetime.now(
-            timezone.utc
-        )
-
-        age_hours = (
-            Decimal(
-                str(
-                    (
-                        now_utc
-                        - cutoff_dt
-                    ).total_seconds()
-                )
-            )
-            / Decimal("3600")
         )
 
         # =============================================
@@ -324,13 +300,18 @@ def main():
         )
 
         print(
-            f"Feed age           : "
-            f"{age_hours:.2f} hours"
+            f"Feed calendar state: "
+            f"{calendar_state.status}"
         )
 
         print(
-            f"Maximum feed age   : "
-            f"{max_age_hours} hours"
+            f"Expected cutoff    : "
+            f"{calendar_state.expected_cutoff_local.isoformat()}"
+        )
+
+        print(
+            f"Grace deadline     : "
+            f"{calendar_state.grace_deadline_local.isoformat()}"
         )
 
         print(
@@ -491,25 +472,70 @@ def main():
 
         # =============================================
         # State 4:
-        # Old portfolio -> wait for new feed.
-        # Not an execution error.
+        # Monthly portfolio calendar validity.
         # =============================================
 
-        if age_hours > max_age_hours:
+        if (
+            calendar_state.status
+            == WAITING_FOR_MONTH_END_FEED
+        ):
 
             print(
                 "Decision           : "
-                "NO_ACTION_STALE_FEED"
+                "NO_ACTION_WAITING_FOR_MONTH_END_FEED"
             )
 
             print()
 
             print(
-                "Waiting for a new "
-                "portfolio feed."
+                "Month-end transition window "
+                "is active. Waiting for the "
+                "new monthly portfolio feed."
             )
 
             return
+
+        if (
+            calendar_state.status
+            == STALE_MISSING_MONTHLY_REBALANCE
+        ):
+
+            print(
+                "Decision           : "
+                "BLOCKED_MISSING_MONTHLY_REBALANCE"
+            )
+
+            raise RuntimeError(
+                "The expected monthly portfolio "
+                "feed is missing. Refusing to "
+                "continue with stale holdings."
+            )
+
+        if (
+            calendar_state.status
+            == FUTURE_INVALID
+        ):
+
+            print(
+                "Decision           : "
+                "BLOCKED_FUTURE_FEED"
+            )
+
+            raise RuntimeError(
+                "Portfolio feed cutoff is not "
+                "valid for the current monthly "
+                "index calendar."
+            )
+
+        if (
+            calendar_state.status
+            != CURRENT
+        ):
+
+            raise RuntimeError(
+                "Unknown feed calendar state: "
+                f"{calendar_state.status}"
+            )
 
         # =============================================
         # State 5:
@@ -628,7 +654,7 @@ def main():
         print()
 
         print(
-            "New portfolio cutoff detected "
+            "Current monthly portfolio detected "
             "and all runner safety checks "
             "passed."
         )

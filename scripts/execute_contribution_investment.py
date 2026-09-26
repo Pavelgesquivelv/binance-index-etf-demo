@@ -41,6 +41,13 @@ from src.execution.order_repository import (
 from src.execution.reconciler import (
     OrderReconciler,
 )
+from src.index.feed_calendar import (
+    CURRENT,
+    FUTURE_INVALID,
+    STALE_MISSING_MONTHLY_REBALANCE,
+    WAITING_FOR_MONTH_END_FEED,
+    classify_feed_cutoff,
+)
 from src.index.portfolio_feed import (
     PortfolioFeedLoader,
 )
@@ -300,6 +307,12 @@ def main():
         ]
     ).load()
 
+    calendar_state = (
+        classify_feed_cutoff(
+            feed.cutoff_utc
+        )
+    )
+
     with database.connection() as conn:
 
         contribution = conn.execute(
@@ -371,6 +384,51 @@ def main():
             "Contribution is not ready "
             "for investment. "
             f"status={status}"
+        )
+
+    if (
+        calendar_state.status
+        == WAITING_FOR_MONTH_END_FEED
+    ):
+
+        raise RuntimeError(
+            "Contribution investment blocked: "
+            "month-end transition window is "
+            "active and the new monthly "
+            "portfolio feed is not yet ready."
+        )
+
+    if (
+        calendar_state.status
+        == STALE_MISSING_MONTHLY_REBALANCE
+    ):
+
+        raise RuntimeError(
+            "Contribution investment blocked: "
+            "the expected monthly portfolio "
+            "feed is missing."
+        )
+
+    if (
+        calendar_state.status
+        == FUTURE_INVALID
+    ):
+
+        raise RuntimeError(
+            "Contribution investment blocked: "
+            "portfolio feed cutoff is invalid "
+            "for the current monthly calendar."
+        )
+
+    if (
+        calendar_state.status
+        != CURRENT
+    ):
+
+        raise RuntimeError(
+            "Contribution investment blocked: "
+            "unknown feed calendar state: "
+            f"{calendar_state.status}"
         )
 
     if completed_run is None:

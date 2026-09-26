@@ -28,6 +28,13 @@ from src.execution.order_repository import (
 from src.execution.reconciler import (
     OrderReconciler,
 )
+from src.index.feed_calendar import (
+    CURRENT,
+    FUTURE_INVALID,
+    STALE_MISSING_MONTHLY_REBALANCE,
+    WAITING_FOR_MONTH_END_FEED,
+    classify_feed_cutoff,
+)
 from src.index.portfolio_feed import (
     PortfolioFeedLoader,
 )
@@ -421,65 +428,75 @@ def main():
         )
     
     # =====================================================
-    # Feed freshness safety gate
+    # Monthly index calendar safety gate.
+    #
+    # The index reconstitutes/rebalances on the final
+    # calendar day of each month at 07:00 CDMX.
+    # Portfolio validity therefore depends on the
+    # expected monthly cutoff, not an arbitrary age.
     # =====================================================
 
-    max_feed_age_hours = Decimal(
-        str(
-            config["index_feed"][
-                "max_age_hours"
-            ]
+    calendar_state = (
+        classify_feed_cutoff(
+            feed.cutoff_utc
         )
-    )
-
-    cutoff_dt = datetime.fromisoformat(
-        feed.cutoff_utc
-    )
-
-    if cutoff_dt.tzinfo is None:
-        raise RuntimeError(
-            "Portfolio cutoff_utc must "
-            "contain timezone information."
-        )
-
-    now_utc = datetime.now(
-        timezone.utc
-    )
-
-    age_seconds = Decimal(
-        str(
-            (
-                now_utc
-                - cutoff_dt
-            ).total_seconds()
-        )
-    )
-
-    age_hours = (
-        age_seconds
-        / Decimal("3600")
     )
 
     print(
-        f"Feed age          : "
-        f"{age_hours:.2f} hours"
+        f"Feed calendar     : "
+        f"{calendar_state.status}"
     )
 
     print(
-        f"Max feed age      : "
-        f"{max_feed_age_hours} hours"
+        f"Expected cutoff   : "
+        f"{calendar_state.expected_cutoff_local.isoformat()}"
+    )
+
+    print(
+        f"Grace deadline    : "
+        f"{calendar_state.grace_deadline_local.isoformat()}"
     )
 
     if (
-        age_hours
-        > max_feed_age_hours
+        calendar_state.status
+        == WAITING_FOR_MONTH_END_FEED
     ):
         raise RuntimeError(
-            "EXECUTION BLOCKED: "
-            "index portfolio feed is stale. "
-            f"Age={age_hours:.2f}h, "
-            f"maximum="
-            f"{max_feed_age_hours}h."
+            "EXECUTION BLOCKED: month-end "
+            "transition window is active. "
+            "Waiting for the new monthly "
+            "portfolio feed."
+        )
+
+    if (
+        calendar_state.status
+        == STALE_MISSING_MONTHLY_REBALANCE
+    ):
+        raise RuntimeError(
+            "EXECUTION BLOCKED: expected "
+            "monthly portfolio feed is missing. "
+            "Refusing to execute using stale "
+            "index holdings."
+        )
+
+    if (
+        calendar_state.status
+        == FUTURE_INVALID
+    ):
+        raise RuntimeError(
+            "EXECUTION BLOCKED: portfolio "
+            "feed cutoff is invalid for the "
+            "current monthly index calendar."
+        )
+
+    if (
+        calendar_state.status
+        != CURRENT
+    ):
+        raise RuntimeError(
+            "EXECUTION BLOCKED: unknown "
+            "feed calendar state: "
+            f"{calendar_state.status}"
         )
 
     # =====================================================

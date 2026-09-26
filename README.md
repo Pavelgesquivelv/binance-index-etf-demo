@@ -167,16 +167,19 @@ A portfolio identified by the same cutoff_utc cannot successfully complete twice
 
 This protection exists at both the application and database levels.
 
-Stale Feed Protection
+Monthly Feed Calendar Protection
 
-Portfolio feeds older than the configured maximum age are blocked.
+Portfolio validity follows the upstream index rebalance calendar rather than a fixed maximum age.
 
-Default:
+The index is reconstituted and rebalanced on the last calendar day of each month at 07:00 America/Mexico_City.
 
-index_feed:
-  max_age_hours: 192
+Before the current month's rebalance time, the previous month-end portfolio remains valid.
 
-This represents an eight-day maximum age for a weekly portfolio process.
+During the 07:00-07:14 month-end transition window, the previous portfolio is retained but new execution waits for the new monthly feed.
+
+After 07:15, if the expected month-end portfolio has not arrived, execution is blocked rather than continuing with stale holdings.
+
+Future or otherwise calendar-invalid portfolio cutoffs are also blocked.
 
 ETF Accounting Model
 
@@ -357,7 +360,9 @@ scripts/weekly_runner.py
 It evaluates the current portfolio feed and returns operational states such as:
 
 NO_ACTION_ALREADY_COMPLETED
-NO_ACTION_STALE_FEED
+NO_ACTION_WAITING_FOR_MONTH_END_FEED
+BLOCKED_MISSING_MONTHLY_REBALANCE
+BLOCKED_FUTURE_FEED
 BLOCKED_RECOVERY_REQUIRED
 BLOCKED_EXISTING_RUN
 READY
@@ -482,7 +487,6 @@ fund:
 
 index_feed:
   portfolio_file: data/portfolio_seed.json
-  max_age_hours: 192
 
 storage:
   database: data/index_etf.db

@@ -24,6 +24,13 @@ from src.contributions.contribution_schedule import (
 from src.exchange.binance_demo_client import (
     BinanceDemoClient,
 )
+from src.index.feed_calendar import (
+    CURRENT,
+    FUTURE_INVALID,
+    STALE_MISSING_MONTHLY_REBALANCE,
+    WAITING_FOR_MONTH_END_FEED,
+    classify_feed_cutoff,
+)
 from src.index.portfolio_feed import (
     PortfolioFeedLoader,
 )
@@ -310,6 +317,83 @@ def main():
             "portfolio_file"
         ]
     ).load()
+
+    calendar_state = (
+        classify_feed_cutoff(
+            feed.cutoff_utc
+        )
+    )
+
+    print()
+
+    print(
+        f"Feed calendar state: "
+        f"{calendar_state.status}"
+    )
+
+    print(
+        f"Expected cutoff    : "
+        f"{calendar_state.expected_cutoff_local.isoformat()}"
+    )
+
+    if (
+        calendar_state.status
+        == WAITING_FOR_MONTH_END_FEED
+    ):
+
+        print()
+
+        print(
+            "Decision           : "
+            "BLOCKED_WAITING_FOR_MONTH_END_FEED"
+        )
+
+        print(
+            "Month-end transition window "
+            "is active. New weekly capital "
+            "will not be accepted until the "
+            "new monthly portfolio is available."
+        )
+
+        raise SystemExit(2)
+
+    if (
+        calendar_state.status
+        == STALE_MISSING_MONTHLY_REBALANCE
+    ):
+
+        print()
+
+        print(
+            "Decision           : "
+            "BLOCKED_MISSING_MONTHLY_REBALANCE"
+        )
+
+        raise SystemExit(2)
+
+    if (
+        calendar_state.status
+        == FUTURE_INVALID
+    ):
+
+        print()
+
+        print(
+            "Decision           : "
+            "BLOCKED_FUTURE_FEED"
+        )
+
+        raise SystemExit(2)
+
+    if (
+        calendar_state.status
+        != CURRENT
+    ):
+
+        raise RuntimeError(
+            "Unknown feed calendar state: "
+            f"{calendar_state.status}"
+        )
 
     # -------------------------------------------------
     # Persistent state checks.

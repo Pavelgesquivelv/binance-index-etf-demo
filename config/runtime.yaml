@@ -6,7 +6,6 @@ fund:
   order_prefix: IDXETF_
 index_feed:
   portfolio_file: data/portfolio_seed.json
-  max_age_hours: 192
 storage:
   database: data/index_etf.db
 environment:
