@@ -155,7 +155,7 @@ def main():
 
         print(
             "ETF inventory is fully backed "
-            "and the configured shared fee "
+            "and the configured dedicated fee "
             "reserve is intact."
         )
 
